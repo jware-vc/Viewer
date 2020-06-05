@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.30011.22
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GradientView", "GradientView.csproj", "{67DA88EF-9210-42D9-85C0-B1E43A7783A2}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Raytracer", "..\..\simple_ray\Raytracer\Raytracer.csproj", "{E6430CB1-4BDD-4A3A-9483-D6DC95AFEF6C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{67DA88EF-9210-42D9-85C0-B1E43A7783A2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{67DA88EF-9210-42D9-85C0-B1E43A7783A2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{67DA88EF-9210-42D9-85C0-B1E43A7783A2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{67DA88EF-9210-42D9-85C0-B1E43A7783A2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E6430CB1-4BDD-4A3A-9483-D6DC95AFEF6C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E6430CB1-4BDD-4A3A-9483-D6DC95AFEF6C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E6430CB1-4BDD-4A3A-9483-D6DC95AFEF6C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E6430CB1-4BDD-4A3A-9483-D6DC95AFEF6C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {EBDE7C25-55C6-4A0D-B9BE-A1E6E31C4115}
+	EndGlobalSection
+EndGlobal
