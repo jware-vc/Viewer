@@ -1,90 +1,47 @@
 ﻿using Raytracer;
 using System;
-using System.Linq;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows.Media.Imaging;
-using System.Windows.Media;
 using System.Runtime.InteropServices;
 using System.Windows;
-using System.Security.Permissions;
 using System.Diagnostics;
+using System.Net.Http.Headers;
+using System.Threading;
 
 namespace GradientView
 {
+    public delegate Vector3 RenderDelegate(in Ray r, in Hitable hitable, in int depth, in RandUtil rand);
+    public delegate bool Render(in RandUtil rand, in bool cancelWork);
     public class LayerModel
     {
-        public delegate Vector3 RenderDelegate(in Ray r, in Hitable hitable, in int depth);
 
-        private Dictionary<string, Program> programs = new Dictionary<string, Program>();
-        public Dictionary<string, RenderDelegate> renderFuncs = new Dictionary<string, RenderDelegate>();
-        public Dictionary<string, WriteableBitmap> bitmaps = new Dictionary<string, WriteableBitmap>();
-        public Dictionary<string, byte[]> pixels = new Dictionary<string, byte[]>();
-        public Dictionary<string, List<RenderInfo>> taskChunks = new Dictionary<string, List<RenderInfo>>();
-
+        public Layer layer;
+        public Int32Rect updateRect;
         public LayerModel() { }
         public Camera cam;
 
 
-        public bool canRender()
+        public Layer AddFrame(string layerName, Program _prog, RenderDelegate render, int width, int height, int numSamples, int bpp)
         {
-            return taskChunks.Any();
-        }
 
-        public void addLayer(string layerName, Program _prog, RenderDelegate render, int width, int height, int numSamples)
-        {
-            programs[layerName] = _prog;
-            renderFuncs[layerName] = render;
-#if true
-            bitmaps[layerName] = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgra32, null);
-            pixels[layerName] = new byte[width * height * 4];
-#else
-            bitmaps[layerName] = new WriteableBitmap(width, height, 96, 96, PixelFormats.Rgba64, null);
-#endif
-            taskChunks[layerName] = genChunkInfo(layerName, _prog, width, height, numSamples);
+            layer = new Layer(render, _prog, width, height, numSamples, bpp);
+            updateRect = new Int32Rect(0, 0, width, height);
             Console.WriteLine($"Adding Layer: {layerName}");
-        }
-
-        public List<RenderInfo> genChunkInfo(string layerName, Program prog, int width, int height, int numSamples)
-        {
-            var infoList = new List<RenderInfo>();
-            cam = new Camera(prog.lookFrom, prog.lookAt, new Vector3(0, 1, 0), prog.vfov, width / height, prog.aperature, prog.dist_to_focus, 0, 1);
-            int xChunkSize = (int)(width / 8);
-            int yChunkSize = (int)(height / 8);
-            var bpm = bitmaps[layerName];
-            var pix = pixels[layerName];
-            for (int endY = height - 1; endY >= 0; endY -= yChunkSize)
-            {
-                var startY = endY - yChunkSize > 0 ? endY - yChunkSize : 0;
-                for (int startX = 0; startX < width; startX += xChunkSize)
-                {
-                    var endX = startX + xChunkSize > width ? width : startX + xChunkSize;
-                    var reg = new Region(startX, endX, startY, endY, width, height, numSamples, bpm.Format.BitsPerPixel);
-                    infoList.Add(new RenderInfo(layerName, ref reg, ref prog.world, ref cam, ref bpm, ref pix));
-                }
-            }
-            return infoList;
+            return layer;
         }
 
 
-        public void updateBpm(string layerName)
+
+
+        public void updateBpm(WriteableBitmap bpm)
         {
-            var bpm = bitmaps[layerName];
             bpm.Lock();
-            var layer = pixels[layerName];
-            Marshal.Copy(layer, 0, bpm.BackBuffer, layer.Length);
-            bpm.AddDirtyRect(new Int32Rect(0, 0, bpm.PixelWidth - 1, bpm.PixelHeight - 1));
+            Marshal.Copy(layer.pix, 0, bpm.BackBuffer, layer.pix.Length);
+            bpm.AddDirtyRect(updateRect);
             bpm.Unlock();
         }
 
-        public void updateBitmap(RenderInfo info)
-        {
-            var stride = ((info.region.sectionWidth * info.bitmap.Format.BitsPerPixel + 7) / 8);
-            info.bitmap.WritePixels(new Int32Rect(info.region.xStart, info.region.yStart, info.region.sectionWidth, info.region.sectionHeight), info.pixels, stride, 0);
-        }
 
         public static uint clamp(in uint _min, in uint _val, in uint _max)
         {
@@ -107,103 +64,180 @@ namespace GradientView
             return _val;
         }
 
-        public static RenderInfo Render2(RenderDelegate render, RenderInfo info)
+        public static IEnumerable<(int, int)> getAA(int aa)
         {
-            var disk = new Vector3(0.5f, 0.5f, 0f);
-            for (int j = info.region.yStart; j < info.region.yEnd + 1; j++)
+
+            for (var a1 = 0; a1 < aa; a1++)
             {
-                for (int i = info.region.xStart; i < info.region.xEnd; i++)
+                for (var a2 = 0; a2 < aa; a2++)
                 {
-                    var tmpCol = new Vector3(0, 0, 0);
-                    for (int samp = 0; samp < info.region.numSamples; samp++)
-                    {
-                        //var disk = Program.randUtil.random_in_unit_disk();
-                        var u = (float)(i + disk.X) / (float)info.region.width;
-                        var v = (float)(j + disk.Y) / (float)info.region.height;
-                        var r = info.cam.getRay(u, v);
-                        r.point_at_parameter(2.0f);
-                        tmpCol += render(r, info.world, 0);
-                    }
-                    tmpCol /= info.region.numSamples;
-                    tmpCol = Vector3.SquareRoot(tmpCol);
-                    var destIdx = (j * (info.region.width * 4)) + (i * 4);
-                    info.pix[destIdx++] = (byte)clamp(0, (int)(tmpCol.Z * 255.99f), 255);
-                    info.pix[destIdx++] = (byte)clamp(0, (int)(tmpCol.Y * 255.99f), 255);
-                    info.pix[destIdx++] = (byte)clamp(0, (int)(tmpCol.X * 255.99f), 255);
-                    info.pix[destIdx++] = (byte)(255);
+                    yield return (a1, a2);
                 }
             }
-            return info;
         }
 
-        public static RenderInfo Render4(RenderDelegate render, RenderInfo info, in bool cancelWork)
+        public static IEnumerable<(int, int, int)> GetRange(Region reg)
         {
-            var disk = new Vector3(0.5f, 0.5f, 0f);
-            for (int j = info.region.yStart; j < info.region.yEnd + 1; j++)
+#if false
+            int sampleSize;
+            if (reg.sampleIndex < 10)
             {
-                for (int i = info.region.xStart; i < info.region.xEnd; i++)
+                sampleSize = 8;
+            }
+            else if (reg.sampleIndex < 20)
+            {
+                sampleSize = 4;
+            }
+            else
+            {
+                sampleSize = 2;
+            }
+#else
+            var sampleSize = 1;
+#endif
+            for (int j = reg.yEnd; j > reg.yStart; j -= sampleSize)
+            {
+                for (int i = reg.xStart; i < reg.xEnd; i += sampleSize)
                 {
-                    var tmpCol = new Vector3(0, 0, 0);
-                    for (int samp = 0; samp < info.region.numSamples; samp++)
-                    {
-                        //var disk = Program.randUtil.random_in_unit_disk();
-                        var u = (float)(i + disk.X) / (float)info.region.width;
-                        var v = (float)(j + disk.Y) / (float)info.region.height;
-                        var r = info.cam.getRay(u, v);
-                        r.point_at_parameter(2.0f);
-                        tmpCol += render(r, info.world, 0);
-                    }
-                    tmpCol /= info.region.numSamples;
-                    tmpCol = Vector3.SquareRoot(tmpCol);
-                    var destIdx = (j * (info.region.width * 4)) + (i * 4);
-                    info.pix[destIdx++] = (byte)clamp(0, (int)(tmpCol.Z * 255.99f), 255);
-                    info.pix[destIdx++] = (byte)clamp(0, (int)(tmpCol.Y * 255.99f), 255);
-                    info.pix[destIdx++] = (byte)clamp(0, (int)(tmpCol.X * 255.99f), 255);
-                    info.pix[destIdx++] = (byte)(255);
-                    if (cancelWork)
-                    {
-                        Debug.Write("Cancelling early!");
-                        return info;
-                    }
+                    yield return (i, j, sampleSize);
                 }
             }
-            return info;
         }
 
-        public static RenderInfo Render3(RenderDelegate render, RenderInfo info, CancellationToken cancellationToken)
+        public static bool RenderProgressive(Region region, ref Layer layer, in RandUtil rand, in bool cancelWork)
         {
-            var disk = new Vector3(0.5f, 0.5f, 0f);
-            for (int j = info.region.yStart; j < info.region.yEnd + 1; j++)
+            Vector3 tmpCol, disk;
+            Ray ray;
+            float u, v;
+            int idx;
+            foreach ((var i, var j, var sampleSize) in GetRange(region))
             {
-                for (int i = info.region.xStart; i < info.region.xEnd; i++)
+                if (cancelWork)
                 {
-                    var tmpCol = new Vector3(0, 0, 0);
-                    for (int samp = 0; samp < info.region.numSamples; samp++)
-                    {
-                        //var disk = Program.randUtil.random_in_unit_disk();
-                        var u = (float)(i + disk.X) / (float)info.region.width;
-                        var v = (float)(j + disk.Y) / (float)info.region.height;
-                        var r = info.cam.getRay(u, v);
-                        r.point_at_parameter(2.0f);
-                        tmpCol += render(r, info.world, 0);
-                    }
-                    tmpCol /= info.region.numSamples;
-                    tmpCol = Vector3.SquareRoot(tmpCol);
-                    var destIdx = (j * (info.region.width * 4)) + (i * 4);
-                    info.pix[destIdx++] = (byte)clamp(0, (int)(tmpCol.Z * 255.99f), 255);
-                    info.pix[destIdx++] = (byte)clamp(0, (int)(tmpCol.Y * 255.99f), 255);
-                    info.pix[destIdx++] = (byte)clamp(0, (int)(tmpCol.X * 255.99f), 255);
-                    info.pix[destIdx++] = (byte)(255);
+                    splatColor(region.xStart, region.yStart, region.width, new Vector3(0), ref region, ref layer);
+                    return region.sampleIndex <= layer.numSamples;
                 }
-                cancellationToken.ThrowIfCancellationRequested();
+                else if (region.sampleIndex == layer.numSamples)
+                {
+                    return true;
+                }
+                else
+                {
+                    idx = (j * region.width) + i;
+                    tmpCol = layer.data[idx];
+                    disk = rand.random_in_unit_disk();
+                    u = (float)(i + disk.X) / (float)region.width;
+                    v = (float)(j + disk.Y) / (float)region.height;
+                    ray = layer.prog.cam.getRay(u, v, in rand);
+                    ray.point_at_parameter(2.0f);
+                    tmpCol += layer.render(ray, layer.prog.world, 0, in rand);
+                }
+                splatColor(i, j, sampleSize, tmpCol, ref region, ref layer);
             }
-            return info;
+            Interlocked.Increment(ref region.sampleIndex);
+            //return true;
+            return region.sampleIndex <= layer.numSamples;
+        }
+        public static void splatColor(int i, int j, int sampleSize, Vector3 col, ref Region region, ref Layer layer)
+        {
+            var sampCol = Vector3.SquareRoot(col / (region.sampleIndex + 1));
+            for (var _j = j; _j < j + sampleSize; _j++)
+            { 
+                for (var _i = i; _i < i + sampleSize; _i++)
+                {
+                    var idx = (_j * region.width) + _i;
+                    if (idx < layer.data.Length)
+                    {
+                        layer.data[idx] = col;
+                        var destIdx = (_j * (region.width * 4)) + (_i * 4);
+                        layer.pix[destIdx + 0] = (byte)clamp(0, (int)(sampCol.Z * 255.99f), 255);
+                        layer.pix[destIdx + 1] = (byte)clamp(0, (int)(sampCol.Y * 255.99f), 255);
+                        layer.pix[destIdx + 2] = (byte)clamp(0, (int)(sampCol.X * 255.99f), 255);
+                        layer.pix[destIdx + 3] = (byte)(255);
+                    }
+                }
+            }
+        }
+
+    }
+
+    public class Layer
+    {
+        public byte[] pix;
+        public Vector3[] data;
+        public Render[] renders;
+        public Region[] regions;
+        public RenderDelegate render;
+        public int numSamples;
+        public int bpm, width, height;
+        public Program prog;
+        public Layer (RenderDelegate _render, Program _prog, int _width, int _height, int _numSamples, int _bpm)
+        {
+            render = _render;
+            width = _width;
+            height = _height;
+            bpm = _bpm;
+            pix = new byte[width * height * 4];
+            data = new Vector3[width * height];
+            prog = _prog;
+            numSamples = _numSamples;
+            regions = GetRegions(width, height, bpm);
+            renders = GetRenders();
+        }
+        public bool Reset()
+        {
+            //pix = new byte[width * height * 4];
+            //data = new Vector3[width * height];
+            //renders = GetRenders();
+            var empty = new Vector3(0);
+            for (var i = 0; i < pix.Length; i += 4)
+            {
+                pix[i] = 0;
+                pix[i+1] = 0;
+                pix[i+2] = 0;
+                pix[i+3] = 255;
+            }
+            for (var i = 0; i < data.Length; i++) data[i] = empty;
+            for (var i = 0; i < regions.Length; i++)
+            {
+                Interlocked.Exchange(ref regions[i].sampleIndex, 0);
+            }
+            return true;
+        }
+        public Render[] GetRenders()
+        {
+            var renders = new List<Render>();
+            var layer = this;
+            foreach (var reg in regions) 
+            {
+                renders.Add((in RandUtil rand, in bool cancel) => {
+                    var result = LayerModel.RenderProgressive(reg, ref layer, in rand, in cancel);
+                    return result;
+                });
+            }
+            return renders.ToArray();
+        }
+        private static Region[] GetRegions(int width, int height, int bpm)
+        {
+            int xChunkSize = (int)(width / 8);
+            int yChunkSize = (int)(height / 8);
+            var reg = new List<Region>();
+            for (int endY = height - 1; endY >= 0; endY -= yChunkSize)
+            {
+                var startY = endY - yChunkSize > 0 ? endY - yChunkSize : 0;
+                for (int startX = 0; startX < width; startX += xChunkSize)
+                {
+                    var endX = startX + xChunkSize > width ? width : startX + xChunkSize;
+                    reg.Add(new Region(startX, endX, startY, endY, width, height, bpm));
+                }
+            }
+            return reg.ToArray();
         }
     }
 
-    public readonly struct Region
+    public class Region
     {
-        public Region(int _xStart, int _xEnd, int _yStart, int _yEnd, int _width, int _height, int _samples, int bitsPerPixel)
+        public Region(int _xStart, int _xEnd, int _yStart, int _yEnd, int _width, int _height, int bitsPerPixel)
         {
             xStart = _xStart;
             xEnd = _xEnd;
@@ -213,32 +247,12 @@ namespace GradientView
             sectionWidth = _xEnd - _xStart;
             height = _height;
             width = _width;
-            numSamples = _samples;
+            sampleIndex = 0;
+            aa = 8; 
             stride = ((sectionWidth * bitsPerPixel + 7) / 8);
         }
-        public readonly int xStart, xEnd, yStart, yEnd, sectionHeight, sectionWidth, height, width, numSamples, stride;
+        public int xStart, xEnd, yStart, yEnd, sectionHeight, sectionWidth, height, width, stride, sampleIndex, aa;
     }
 
 
-    public struct RenderInfo
-    {
-        public RenderInfo(string _layer, ref Region _region, ref Hitable _world, ref Camera _cam, ref WriteableBitmap _bitmap, ref byte[] _pix)
-        {
-            layer = _layer;
-            region = _region;
-            world = _world;
-            cam = _cam;
-            var numChannels = 3;
-            pixels = new byte[region.sectionWidth * region.sectionHeight * numChannels];
-            pix = _pix;
-            bitmap = _bitmap;
-        }
-        public string layer;
-        public Hitable world;
-        public Camera cam;
-        public Region region;
-        public byte[] pixels;
-        public byte[] pix;
-        public WriteableBitmap bitmap;
-    }
 }

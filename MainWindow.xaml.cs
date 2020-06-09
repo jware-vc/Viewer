@@ -38,6 +38,7 @@ namespace GradientView
         private System.Windows.Point dragPos;
         private static DispatcherTimer timer;
         private static WorkQueue workQueue;
+        private WriteableBitmap bitmap;
 
 
         public MainWindow()
@@ -45,16 +46,19 @@ namespace GradientView
             InitializeComponent();
             layerModel = new LayerModel();
             prog = new Program();
-            int width = 512;
-            int height = 512;
-            layerModel.addLayer(layerName, prog, prog.uv, width, height, 1);
-            View.Source = layerModel.bitmaps[layerName];
+            int width = 1024;
+            int height = 1024;
+            bitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgra32, null);
+            var frame = layerModel.AddFrame(layerName, prog, prog.color, width, height, 500, bitmap.Format.BitsPerPixel);
+            View.Source = bitmap;
             workQueue = new WorkQueue();
-            workQueue.addWork(prog.lightPass, layerModel.taskChunks[layerName]);
+            workQueue.AddWork(frame.GetRenders());
 
-            timer = new DispatcherTimer();
-            timer.Interval = TimeSpan.FromMilliseconds(30);
-            timer.Tick += (sender, arguments) => layerModel.updateBpm(layerName);
+            timer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(60)
+            };
+            timer.Tick += (sender, arguments) => layerModel.updateBpm(bitmap);
             timer.Start();
         }
 
@@ -65,33 +69,23 @@ namespace GradientView
 
         private void Window_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            dragPos = e.GetPosition(this);
-            isDragging = true;
+            workQueue.Cancel();
+            layerModel.layer.Reset();
         }
 
         private void Window_MouseUp(object sender, MouseButtonEventArgs e)
         {
-            isDragging = false;
-            workQueue.cancel();
-            workQueue.addWork(prog.lightPass, layerModel.taskChunks[layerName]);
+
         }
 
         private void Window_MouseMove(object sender, MouseEventArgs e)
         {
-            if (isDragging)
-            {
-
-                var pos = e.GetPosition(this);
-                var offset = new Vector3((float)(dragPos.X - pos.X), (float)(dragPos.Y - pos.Y), 0);
-                layerModel.cam.origin += offset / 10.0f;
-                dragPos = pos;
-            }
         }
 
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
-            workQueue.cancel();
-            workQueue.close();
+            workQueue.Cancel();
+            workQueue.Close();
         }
     }
 }

@@ -14,95 +14,75 @@ namespace GradientView
     {
         public bool cancelWork = false;
         public bool abortWork = false;
-        public bool wait = false;
-        private ConcurrentBag<WorkInfo> workQueue;
-        private WorkInfo wInfo;
+        private ConcurrentQueue<Render> renderQueue;
+        private RandUtil rand;
 
-        public Worker (ConcurrentBag<WorkInfo> _workQueue)
+        public Worker (ConcurrentQueue<Render> _renderQueue, int seed=0)
         {
-            workQueue = _workQueue;
+            renderQueue = _renderQueue;
+            rand = new RandUtil(seed);
         }
-        public void run()
+        public void Run()
         {
-            wInfo = new WorkInfo();
 
             while (abortWork != true)
             {
-                if (wait is false && workQueue.TryTake(out wInfo))
+                Render ren;
+                if (renderQueue.TryDequeue(out ren))
                 {
-                    LayerModel.Render2(wInfo.renderDelegate, wInfo.info);
+                    var result = ren(in rand, in cancelWork);
+                    if (cancelWork)
+                    {
+                        cancelWork = false;
+                    }
+                    renderQueue.Enqueue(ren);
                 }
-                Thread.Sleep(20);
+                Thread.Sleep(10);
             }
         }
 
     }
-    struct WorkInfo
-    {
-        public LayerModel.RenderDelegate renderDelegate;
-        public RenderInfo info;
-        public WorkInfo(LayerModel.RenderDelegate _renderDelegate, RenderInfo _info) 
-        {
-            renderDelegate = _renderDelegate;
-            info = _info;
-        }
-    }
     public class WorkQueue
     {
-        private static int numThreads = 15;
+        private static int numThreads = Environment.ProcessorCount;
         private Thread[] threads = new Thread[numThreads];
         private Worker[] workers = new Worker[numThreads];
-        private ConcurrentBag<WorkInfo> queue = new ConcurrentBag<WorkInfo>();
+        private ConcurrentQueue<Render> queue = new ConcurrentQueue<Render>();
 
         public WorkQueue ()
         {
 
             for (var i = 0; i < numThreads; i++)
             {
-                workers[i] = new Worker(queue);
-                threads[i] = new Thread(workers[i].run);
+                workers[i] = new Worker(queue, i*309830);
+                threads[i] = new Thread(workers[i].Run);
                 threads[i].Start();
             }
         }
 
-        public bool addWork(LayerModel.RenderDelegate renderDelegate, RenderInfo info)
+        public bool AddWork(Render info)
         {
-            queue.Add(new WorkInfo ( renderDelegate, info ));
+            queue.Enqueue(info);
             return true;
         }
 
-        public bool addWork(LayerModel.RenderDelegate renderDelegate, List<RenderInfo> infos)
+        public bool AddWork(Render[] infos)
         {
-            foreach (var worker in workers)
-            {
-                worker.wait = true;
-            }
-            foreach (var info in infos)
-            {
-                queue.Add(new WorkInfo(renderDelegate, info));
-            }
-            foreach (var worker in workers)
-            {
-                worker.wait = false;
-            }
+            foreach (var info in infos) AddWork(info); 
             return true;
         }
-
-        public void cancel()
+        public void Clear()
         {
-            foreach (var worker in workers)
-            {
-                worker.cancelWork = true;
-            }
             queue.Clear();
         }
-        public void close()
+
+        public void Cancel()
         {
-            foreach (var worker in workers)
-            {
-                worker.abortWork = true;
-            }
-            queue.Clear();
+            foreach (var worker in workers) worker.cancelWork = true;
+        }
+        public void Close()
+        {
+            foreach (var worker in workers) worker.abortWork = true;
         }
     }
 }
