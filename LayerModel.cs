@@ -128,7 +128,7 @@ namespace GradientView
                     disk = rand.random_in_unit_disk();
                     u = (float)(i + disk.X) / (float)region.width;
                     v = (float)(j + disk.Y) / (float)region.height;
-                    ray = layer.prog.cam.getRay(u, v, in rand);
+                    ray = layer.prog.cam.GetRay(u, v, in rand);
                     ray.point_at_parameter(2.0f);
                     tmpCol += layer.render(ray, layer.prog.world, 0, in rand);
                 }

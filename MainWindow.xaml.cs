@@ -49,7 +49,7 @@ namespace GradientView
             int width = 1024;
             int height = 1024;
             bitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgra32, null);
-            var frame = layerModel.AddFrame(layerName, prog, prog.color, width, height, 500, bitmap.Format.BitsPerPixel);
+            var frame = layerModel.AddFrame(layerName, prog, prog.plainColor, width, height, 10, bitmap.Format.BitsPerPixel);
             View.Source = bitmap;
             workQueue = new WorkQueue();
             workQueue.AddWork(frame.GetRenders());
