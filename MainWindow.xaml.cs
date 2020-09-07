@@ -1,24 +1,13 @@
-﻿using System;
+﻿using Raytracer;
+using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using System.Numerics;
 using System.Threading.Tasks;
-using System.Windows.Threading;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-using Raytracer;
-using System.Threading;
-using System.Numerics;
-using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.ComTypes;
-using System.Runtime.CompilerServices;
+using System.Windows.Threading;
 
 namespace GradientView
 {
@@ -33,44 +22,50 @@ namespace GradientView
         public LayerModel layerModel;
         public Program prog;
         public Task renderTask;
-        private bool isDragging = false;
-        private string layerName = "lightPass";
-        private System.Windows.Point dragPos;
         private static DispatcherTimer timer;
         private static WorkQueue workQueue;
-        private WriteableBitmap bitmap;
+        private readonly WriteableBitmap bitmap;
+        private readonly List<Layer> layers = new List<Layer>();
 
 
         public MainWindow()
         {
             InitializeComponent();
             layerModel = new LayerModel();
-            prog = new Program();
-            int width = 1024;
-            int height = 1024;
-            bitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgra32, null);
-            var frame = layerModel.AddFrame(layerName, prog, prog.plainColor, width, height, 10, bitmap.Format.BitsPerPixel);
+            //prog = Program.Cornel();
+            int width = 2048;
+            int height = 2048;
+            prog = Program.parseScene(@"scenes/book.txt", new Vector2(width, height));
+            bitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Rgba128Float, null);
+            var layer = layerModel.AddFrame(prog, prog.Color, width, height, 100, bitmap.Format.BitsPerPixel);
+            layers.Add(layer);
             View.Source = bitmap;
             workQueue = new WorkQueue();
-            workQueue.AddWork(frame.GetRenders());
+            foreach (var l in layers)
+            {
+                workQueue.AddWork(l.renders);
+            }
 
             timer = new DispatcherTimer
             {
-                Interval = TimeSpan.FromMilliseconds(60)
+                Interval = TimeSpan.FromMilliseconds(250)
             };
-            timer.Tick += (sender, arguments) => layerModel.updateBpm(bitmap);
+            timer.Tick += (sender, arguments) => layerModel.UpdateBpm(bitmap, layer);
             timer.Start();
         }
 
 
-        private void handleSizeChanged(object sender, SizeChangedEventArgs e)
+        private void HandleSizeChanged(object sender, SizeChangedEventArgs e)
         {
         }
 
         private void Window_MouseDown(object sender, MouseButtonEventArgs e)
         {
             workQueue.Cancel();
-            layerModel.layer.Reset();
+            foreach (var l in layers)
+            {
+                l.Reset();
+            }
         }
 
         private void Window_MouseUp(object sender, MouseButtonEventArgs e)

@@ -1,13 +1,12 @@
 ﻿using Raytracer;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
-using System.Windows.Media.Imaging;
 using System.Runtime.InteropServices;
-using System.Windows;
-using System.Diagnostics;
-using System.Net.Http.Headers;
 using System.Threading;
+using System.Windows;
+using System.Windows.Media.Imaging;
 
 namespace GradientView
 {
@@ -16,25 +15,22 @@ namespace GradientView
     public class LayerModel
     {
 
-        public Layer layer;
         public Int32Rect updateRect;
         public LayerModel() { }
         public Camera cam;
 
 
-        public Layer AddFrame(string layerName, Program _prog, RenderDelegate render, int width, int height, int numSamples, int bpp)
+        public Layer AddFrame(Program _prog, RenderDelegate render, int width, int height, int numSamples, int bpp)
         {
 
-            layer = new Layer(render, _prog, width, height, numSamples, bpp);
             updateRect = new Int32Rect(0, 0, width, height);
-            Console.WriteLine($"Adding Layer: {layerName}");
-            return layer;
+            return new Layer(render, _prog, width, height, numSamples, bpp);
         }
 
 
 
 
-        public void updateBpm(WriteableBitmap bpm)
+        public void UpdateBpm(WriteableBitmap bpm, Layer layer)
         {
             bpm.Lock();
             Marshal.Copy(layer.pix, 0, bpm.BackBuffer, layer.pix.Length);
@@ -43,28 +39,52 @@ namespace GradientView
         }
 
 
-        public static uint clamp(in uint _min, in uint _val, in uint _max)
+        public static uint Clamp(in uint _min, in uint _val, in uint _max)
         {
-            if (_val < _min) return _min;
-            if (_val > _max) return _max;
+            if (_val < _min)
+            {
+                return _min;
+            }
+
+            if (_val > _max)
+            {
+                return _max;
+            }
+
             return _val;
         }
 
-        public static int clamp(in int _min, in int _val, in int _max)
+        public static int Clamp(in int _min, in int _val, in int _max)
         {
-            if (_val < _min) return _min;
-            if (_val > _max) return _max;
+            if (_val < _min)
+            {
+                return _min;
+            }
+
+            if (_val > _max)
+            {
+                return _max;
+            }
+
             return _val;
         }
 
-        public static float clamp(in float _min, in float _val, in float _max)
+        public static float Clamp(in float _min, in float _val, in float _max)
         {
-            if (_val < _min) return _min;
-            if (_val > _max) return _max;
+            if (_val < _min)
+            {
+                return _min;
+            }
+
+            if (_val > _max)
+            {
+                return _max;
+            }
+
             return _val;
         }
 
-        public static IEnumerable<(int, int)> getAA(int aa)
+        public static IEnumerable<(int, int)> GetAA(int aa)
         {
 
             for (var a1 = 0; a1 < aa; a1++)
@@ -114,35 +134,36 @@ namespace GradientView
             {
                 if (cancelWork)
                 {
-                    splatColor(region.xStart, region.yStart, region.width, new Vector3(0), ref region, ref layer);
+                    SplatColor(region.xStart, region.yStart, region.width, new Vector3(0), ref region, ref layer);
                     return region.sampleIndex <= layer.numSamples;
                 }
                 else if (region.sampleIndex == layer.numSamples)
                 {
-                    return true;
+                    layer.RegionComplete(region);
+                    return false;
                 }
                 else
                 {
                     idx = (j * region.width) + i;
                     tmpCol = layer.data[idx];
-                    disk = rand.random_in_unit_disk();
+                    disk = rand.Random_in_unit_disk();
                     u = (float)(i + disk.X) / (float)region.width;
                     v = (float)(j + disk.Y) / (float)region.height;
                     ray = layer.prog.cam.GetRay(u, v, in rand);
-                    ray.point_at_parameter(2.0f);
+                    ray.Point_at_parameter(2.0f);
                     tmpCol += layer.render(ray, layer.prog.world, 0, in rand);
                 }
-                splatColor(i, j, sampleSize, tmpCol, ref region, ref layer);
+                SplatColor(i, j, sampleSize, tmpCol, ref region, ref layer);
             }
             Interlocked.Increment(ref region.sampleIndex);
             //return true;
             return region.sampleIndex <= layer.numSamples;
         }
-        public static void splatColor(int i, int j, int sampleSize, Vector3 col, ref Region region, ref Layer layer)
+        public static void SplatColor(int i, int j, int sampleSize, Vector3 col, ref Region region, ref Layer layer)
         {
             var sampCol = Vector3.SquareRoot(col / (region.sampleIndex + 1));
             for (var _j = j; _j < j + sampleSize; _j++)
-            { 
+            {
                 for (var _i = i; _i < i + sampleSize; _i++)
                 {
                     var idx = (_j * region.width) + _i;
@@ -150,10 +171,14 @@ namespace GradientView
                     {
                         layer.data[idx] = col;
                         var destIdx = (_j * (region.width * 4)) + (_i * 4);
-                        layer.pix[destIdx + 0] = (byte)clamp(0, (int)(sampCol.Z * 255.99f), 255);
-                        layer.pix[destIdx + 1] = (byte)clamp(0, (int)(sampCol.Y * 255.99f), 255);
-                        layer.pix[destIdx + 2] = (byte)clamp(0, (int)(sampCol.X * 255.99f), 255);
-                        layer.pix[destIdx + 3] = (byte)(255);
+                        layer.pix[destIdx + 0] = sampCol.X;
+                        layer.pix[destIdx + 1] = sampCol.Y;
+                        layer.pix[destIdx + 2] = sampCol.Z;
+                        layer.pix[destIdx + 3] = 1.0f;
+                        //layer.pix[destIdx + 0] = (byte)clamp(0, (int)(sampCol.Z * 255.99f), 255);
+                        //layer.pix[destIdx + 1] = (byte)clamp(0, (int)(sampCol.Y * 255.99f), 255);
+                        //layer.pix[destIdx + 2] = (byte)clamp(0, (int)(sampCol.X * 255.99f), 255);
+                        //layer.pix[destIdx + 3] = (byte)(255);
                     }
                 }
             }
@@ -161,23 +186,26 @@ namespace GradientView
 
     }
 
+    public delegate void LayerFinished();
     public class Layer
     {
-        public byte[] pix;
+        public LayerFinished layerFinished;
+        public float[] pix;
         public Vector3[] data;
+        public Boolean[] converged;
         public Render[] renders;
         public Region[] regions;
         public RenderDelegate render;
         public int numSamples;
         public int bpm, width, height;
         public Program prog;
-        public Layer (RenderDelegate _render, Program _prog, int _width, int _height, int _numSamples, int _bpm)
+        public Layer(RenderDelegate _render, Program _prog, int _width, int _height, int _numSamples, int _bpm)
         {
             render = _render;
             width = _width;
             height = _height;
             bpm = _bpm;
-            pix = new byte[width * height * 4];
+            pix = new float[width * height * 4];
             data = new Vector3[width * height];
             prog = _prog;
             numSamples = _numSamples;
@@ -193,24 +221,41 @@ namespace GradientView
             for (var i = 0; i < pix.Length; i += 4)
             {
                 pix[i] = 0;
-                pix[i+1] = 0;
-                pix[i+2] = 0;
-                pix[i+3] = 255;
+                pix[i + 1] = 0;
+                pix[i + 2] = 0;
+                pix[i + 3] = 255;
             }
-            for (var i = 0; i < data.Length; i++) data[i] = empty;
+            for (var i = 0; i < data.Length; i++)
+            {
+                data[i] = empty;
+            }
             for (var i = 0; i < regions.Length; i++)
             {
                 Interlocked.Exchange(ref regions[i].sampleIndex, 0);
             }
             return true;
         }
+        public void RegionComplete(Region reg)
+        {
+            if (reg.isComplete == 1)
+            {
+                return;
+            }
+
+            Interlocked.Exchange(ref reg.isComplete, 1);
+            if (regions.All((r) => r.isComplete == 1))
+            {
+                layerFinished?.Invoke();
+            }
+        }
         public Render[] GetRenders()
         {
             var renders = new List<Render>();
             var layer = this;
-            foreach (var reg in regions) 
+            foreach (var reg in regions)
             {
-                renders.Add((in RandUtil rand, in bool cancel) => {
+                renders.Add((in RandUtil rand, in bool cancel) =>
+                {
                     var result = LayerModel.RenderProgressive(reg, ref layer, in rand, in cancel);
                     return result;
                 });
@@ -248,10 +293,11 @@ namespace GradientView
             height = _height;
             width = _width;
             sampleIndex = 0;
-            aa = 8; 
+            aa = 8;
             stride = ((sectionWidth * bitsPerPixel + 7) / 8);
+            isComplete = 0;
         }
-        public int xStart, xEnd, yStart, yEnd, sectionHeight, sectionWidth, height, width, stride, sampleIndex, aa;
+        public int xStart, xEnd, yStart, yEnd, sectionHeight, sectionWidth, height, width, stride, sampleIndex, aa, isComplete;
     }
 
 

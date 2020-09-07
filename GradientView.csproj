@@ -11,4 +11,10 @@
     <ProjectReference Include="..\..\simple_ray\Raytracer\Raytracer.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="scenes\basic.txt">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

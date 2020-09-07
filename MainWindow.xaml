@@ -9,17 +9,9 @@
         MouseDown="Window_MouseDown"
         MouseUp="Window_MouseUp"
         MouseMove="Window_MouseMove"
-        Title="MainWindow" Height="450" Width="800" SizeChanged="handleSizeChanged">
+        Title="MainWindow" Height="450" Width="800" SizeChanged="HandleSizeChanged">
     <Grid>
         <Image x:Name="View" RenderTransformOrigin="0.5,0.5">
-            <Image.RenderTransform>
-                <TransformGroup>
-                    <ScaleTransform/>
-                    <SkewTransform/>
-                    <RotateTransform Angle="180"/>
-                    <TranslateTransform/>
-                </TransformGroup>
-            </Image.RenderTransform>
         </Image>
     </Grid>
 </Window>
